@@ -58,6 +58,12 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define SC_IPSIPS_Pin GPIO_PIN_6
+#define SC_IPSIPS_GPIO_Port GPIOA
+#define CD_IPS_Pin GPIO_PIN_5
+#define CD_IPS_GPIO_Port GPIOC
+#define SC_IPS_Pin GPIO_PIN_4
+#define SC_IPS_GPIO_Port GPIOD
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

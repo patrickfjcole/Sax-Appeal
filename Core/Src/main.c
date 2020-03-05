@@ -29,6 +29,7 @@
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
+typedef StaticTask_t osStaticThreadDef_t;
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
@@ -49,15 +50,48 @@ ADC_HandleTypeDef hadc2;
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
+I2S_HandleTypeDef hi2s2;
 I2S_HandleTypeDef hi2s3;
+DMA_HandleTypeDef hdma_spi2_rx;
 DMA_HandleTypeDef hdma_spi3_tx;
 
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
+SPI_HandleTypeDef hspi1;
+
+/* Definitions for synthTask */
+osThreadId_t synthTaskHandle;
+uint32_t synthTaskBuffer[ 128 ];
+osStaticThreadDef_t synthTaskControlBlock;
+const osThreadAttr_t synthTask_attributes = {
+  .name = "synthTask",
+  .stack_mem = &synthTaskBuffer[0],
+  .stack_size = sizeof(synthTaskBuffer),
+  .cb_mem = &synthTaskControlBlock,
+  .cb_size = sizeof(synthTaskControlBlock),
   .priority = (osPriority_t) osPriorityNormal,
-  .stack_size = 128
+};
+/* Definitions for midiTask */
+osThreadId_t midiTaskHandle;
+uint32_t midiTaskBuffer[ 128 ];
+osStaticThreadDef_t midiTaskControlBlock;
+const osThreadAttr_t midiTask_attributes = {
+  .name = "midiTask",
+  .stack_mem = &midiTaskBuffer[0],
+  .stack_size = sizeof(midiTaskBuffer),
+  .cb_mem = &midiTaskControlBlock,
+  .cb_size = sizeof(midiTaskControlBlock),
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for buttonTask */
+osThreadId_t buttonTaskHandle;
+uint32_t inputTaskBuffer[ 128 ];
+osStaticThreadDef_t inputTaskControlBlock;
+const osThreadAttr_t buttonTask_attributes = {
+  .name = "buttonTask",
+  .stack_mem = &inputTaskBuffer[0],
+  .stack_size = sizeof(inputTaskBuffer),
+  .cb_mem = &inputTaskControlBlock,
+  .cb_size = sizeof(inputTaskControlBlock),
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
 
@@ -72,7 +106,11 @@ static void MX_ADC2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_I2S3_Init(void);
-void StartDefaultTask(void *argument);
+static void MX_I2S2_Init(void);
+static void MX_SPI1_Init(void);
+void StartSynthTask(void *argument);
+void StartMidiTask(void *argument);
+void StartButtonTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -118,6 +156,8 @@ int main(void)
   MX_I2C1_Init();
   MX_I2C2_Init();
   MX_I2S3_Init();
+  MX_I2S2_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -141,8 +181,14 @@ int main(void)
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+  /* creation of synthTask */
+  synthTaskHandle = osThreadNew(StartSynthTask, NULL, &synthTask_attributes);
+
+  /* creation of midiTask */
+  midiTaskHandle = osThreadNew(StartMidiTask, NULL, &midiTask_attributes);
+
+  /* creation of buttonTask */
+  buttonTaskHandle = osThreadNew(StartButtonTask, NULL, &buttonTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -383,6 +429,40 @@ static void MX_I2C2_Init(void)
 }
 
 /**
+  * @brief I2S2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2S2_Init(void)
+{
+
+  /* USER CODE BEGIN I2S2_Init 0 */
+
+  /* USER CODE END I2S2_Init 0 */
+
+  /* USER CODE BEGIN I2S2_Init 1 */
+
+  /* USER CODE END I2S2_Init 1 */
+  hi2s2.Instance = SPI2;
+  hi2s2.Init.Mode = I2S_MODE_MASTER_RX;
+  hi2s2.Init.Standard = I2S_STANDARD_PHILIPS;
+  hi2s2.Init.DataFormat = I2S_DATAFORMAT_16B_EXTENDED;
+  hi2s2.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
+  hi2s2.Init.AudioFreq = I2S_AUDIOFREQ_48K;
+  hi2s2.Init.CPOL = I2S_CPOL_LOW;
+  hi2s2.Init.ClockSource = I2S_CLOCK_PLL;
+  hi2s2.Init.FullDuplexMode = I2S_FULLDUPLEXMODE_DISABLE;
+  if (HAL_I2S_Init(&hi2s2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2S2_Init 2 */
+
+  /* USER CODE END I2S2_Init 2 */
+
+}
+
+/**
   * @brief I2S3 Initialization Function
   * @param None
   * @retval None
@@ -402,7 +482,7 @@ static void MX_I2S3_Init(void)
   hi2s3.Init.Standard = I2S_STANDARD_PHILIPS;
   hi2s3.Init.DataFormat = I2S_DATAFORMAT_16B;
   hi2s3.Init.MCLKOutput = I2S_MCLKOUTPUT_ENABLE;
-  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_8K;
+  hi2s3.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s3.Init.CPOL = I2S_CPOL_LOW;
   hi2s3.Init.ClockSource = I2S_CLOCK_PLL;
   hi2s3.Init.FullDuplexMode = I2S_FULLDUPLEXMODE_DISABLE;
@@ -416,6 +496,44 @@ static void MX_I2S3_Init(void)
 
 }
 
+/**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
 /** 
   * Enable DMA controller clock
   */
@@ -426,6 +544,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
   /* DMA1_Stream5_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
@@ -443,20 +564,40 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SC_IPSIPS_GPIO_Port, SC_IPSIPS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PD4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|CD_IPS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SC_IPS_GPIO_Port, SC_IPS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : SC_IPSIPS_Pin */
+  GPIO_InitStruct.Pin = SC_IPSIPS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+  HAL_GPIO_Init(SC_IPSIPS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PC4 CD_IPS_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|CD_IPS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SC_IPS_Pin */
+  GPIO_InitStruct.Pin = SC_IPS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SC_IPS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
@@ -470,14 +611,14 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN Header_StartSynthTask */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the synthTask thread.
   * @param  argument: Not used 
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
+/* USER CODE END Header_StartSynthTask */
+__weak void StartSynthTask(void *argument)
 {
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
@@ -488,6 +629,42 @@ void StartDefaultTask(void *argument)
     osDelay(1);
   }
   /* USER CODE END 5 */ 
+}
+
+/* USER CODE BEGIN Header_StartMidiTask */
+/**
+* @brief Function implementing the midiTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartMidiTask */
+__weak void StartMidiTask(void *argument)
+{
+  /* USER CODE BEGIN StartMidiTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartMidiTask */
+}
+
+/* USER CODE BEGIN Header_StartButtonTask */
+/**
+* @brief Function implementing the buttonTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartButtonTask */
+__weak void StartButtonTask(void *argument)
+{
+  /* USER CODE BEGIN StartButtonTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartButtonTask */
 }
 
 /**
