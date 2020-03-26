@@ -1,0 +1,3 @@
+input.c:26:6:StartInputTask	32	static
+input.c:44:13:ButtonUpdate	48	static
+input.c:110:6:HAL_GPIO_EXTI_Callback	16	static
